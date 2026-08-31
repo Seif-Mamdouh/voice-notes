@@ -1,98 +1,86 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useRecorder } from '@/lib/useRecorder';
+import { useCreateTranscription } from '@/stores/transcriptions';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function HomeScreen() {
+export default function RecordScreen() {
+  const router = useRouter();
+  const recorder = useRecorder();
+  const { create, isUploading, error } = useCreateTranscription();
+
+  const onPress = async () => {
+    if (recorder.isRecording) {
+      const uri = await recorder.stop();
+      const transcription = await create(uri);
+      if (transcription) {
+        router.push({ pathname: '/transcript', params: { id: String(transcription.id) } });
+      }
+    } else {
+      await recorder.start();
+    }
+  };
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <View style={styles.container}>
+      <Text style={styles.timer}>
+        {recorder.isRecording ? formatDuration(recorder.durationSeconds) : ' '}
+      </Text>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+      <Pressable
+        onPress={onPress}
+        disabled={isUploading}
+        style={({ pressed }) => [
+          styles.micButton,
+          recorder.isRecording && styles.micButtonRecording,
+          pressed && styles.micButtonPressed,
+        ]}
+      >
+        {isUploading ? (
+          <ActivityIndicator color="#fff" size="large" />
+        ) : (
+          <Text style={styles.micIcon}>{recorder.isRecording ? '■' : '🎙️'}</Text>
+        )}
+      </Pressable>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+      <Text style={styles.hint}>
+        {isUploading
+          ? 'Transcribing…'
+          : recorder.isRecording
+            ? 'Tap to stop'
+            : 'Tap to record'}
+      </Text>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      {error && <Text style={styles.error}>{error}</Text>}
+
+      <Pressable onPress={() => router.push('/transcript')}>
+        <Text style={styles.link}>View past transcriptions</Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24, padding: 24 },
+  timer: { fontSize: 40, fontVariant: ['tabular-nums'], height: 48 },
+  micButton: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#208AEF',
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
   },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
+  micButtonRecording: { backgroundColor: '#E5484D' },
+  micButtonPressed: { opacity: 0.8 },
+  micIcon: { fontSize: 44, color: '#fff' },
+  hint: { fontSize: 16, opacity: 0.6 },
+  error: { color: '#E5484D', textAlign: 'center' },
+  link: { color: '#208AEF', fontSize: 15, marginTop: 16 },
 });
