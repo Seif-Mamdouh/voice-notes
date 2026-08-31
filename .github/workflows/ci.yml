@@ -38,7 +38,19 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: app-mobile/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies (for OpenAPI dump)
+        run: pip install -r ../api/requirements.txt
       - name: Install dependencies
         run: npm ci
+      - name: Codegen drift check
+        run: |
+          npm run generate:api:ci
+          git diff --exit-code -- src/lib/api || {
+            echo "::error::Generated API client is stale — run 'npm run generate:api' in app-mobile and commit the result."
+            exit 1
+          }
       - name: Typecheck
         run: npx tsc --noEmit
