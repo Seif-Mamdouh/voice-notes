@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from clients.deepgram import DeepgramTranscriber
 from models import Transcription
 from services.transcription import TranscriptionService
 
 router = APIRouter(prefix="/transcriptions", tags=["transcriptions"])
 
-service = TranscriptionService()
+service = TranscriptionService(transcriber=DeepgramTranscriber())
 
 
 class TranscriptionResponse(BaseModel):

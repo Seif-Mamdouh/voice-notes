@@ -15,29 +15,20 @@ class Transcriber(Protocol):
     async def transcribe(self, audio: bytes, mimetype: str) -> TranscriptResult: ...
 
 
-class StubTranscriber:
-    """Placeholder transcriber until the Deepgram client lands."""
-
-    async def transcribe(self, audio: bytes, mimetype: str) -> TranscriptResult:
-        return TranscriptResult(
-            transcript=f"[stub transcript for {len(audio)} bytes of {mimetype}]",
-            duration_seconds=None,
-        )
-
-
 class TranscriptionService:
     """Orchestrates transcription: speech-to-text provider + persistence.
 
-    Deps are injected with production defaults so tests can fake both
-    without a DB or network.
+    Deps are injected (repo has a production default) so tests can fake both
+    without a DB or network. The production transcriber is wired in at the
+    composition root (routers/transcriptions.py).
     """
 
     def __init__(
         self,
-        transcriber: Transcriber | None = None,
+        transcriber: Transcriber,
         repo: TranscriptionRepo | None = None,
     ):
-        self._transcriber = transcriber or StubTranscriber()
+        self._transcriber = transcriber
         self._repo = repo or TranscriptionRepo()
 
     async def create(self, audio: bytes, mimetype: str) -> Transcription:
