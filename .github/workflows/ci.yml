@@ -25,3 +25,32 @@ jobs:
       - name: Tests
         run: |
           if [ -d tests ]; then pytest; else echo "no tests yet"; fi
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies (for OpenAPI dump)
+        run: pip install -r ../api/requirements.txt
+      - name: Install dependencies
+        run: npm ci
+      - name: Codegen drift check
+        run: |
+          npm run generate:api:ci
+          git diff --exit-code -- src/lib/api || {
+            echo "::error::Generated API client is stale — run 'npm run generate:api' in app-mobile and commit the result."
+            exit 1
+          }
+      - name: Typecheck
+        run: npx tsc --noEmit
