@@ -1,13 +1,11 @@
 from fastapi import APIRouter, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from clients.deepgram import DeepgramTranscriber
+from clients.deepgram import transcribe
 from models import Transcription
-from services.transcription import TranscriptionService
+from services.transcription import create, get, list_all
 
 router = APIRouter(prefix="/transcriptions", tags=["transcriptions"])
-
-service = TranscriptionService(transcriber=DeepgramTranscriber())
 
 
 class TranscriptionResponse(BaseModel):
@@ -35,18 +33,18 @@ async def create_transcription(file: UploadFile) -> TranscriptionResponse:
     audio = await file.read()
     if not audio:
         raise HTTPException(status_code=400, detail="Empty audio file")
-    row = await service.create(audio, file.content_type or "audio/m4a")
+    row = await create(audio, file.content_type or "audio/m4a", transcribe=transcribe)
     return to_response(row)
 
 
 @router.get("", response_model=TranscriptionListResponse)
 def list_transcriptions() -> TranscriptionListResponse:
-    return TranscriptionListResponse(transcriptions=[to_response(r) for r in service.list()])
+    return TranscriptionListResponse(transcriptions=[to_response(r) for r in list_all()])
 
 
 @router.get("/{transcription_id}", response_model=TranscriptionResponse)
 def get_transcription(transcription_id: int) -> TranscriptionResponse:
-    row = service.get(transcription_id)
+    row = get(transcription_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Transcription not found")
     return to_response(row)

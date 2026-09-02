@@ -1,3 +1,5 @@
+import { File } from "expo-file-system";
+
 import type { components } from "./generated";
 import { apiRequest } from "./request";
 
@@ -12,14 +14,11 @@ export type TranscriptionList = components["schemas"]["TranscriptionListResponse
 export const api = {
   transcriptions: {
     /** Upload a recorded audio file for transcription. */
-    async create(fileUri: string, mimetype = "audio/m4a"): Promise<Transcription> {
+    async create(fileUri: string): Promise<Transcription> {
       const form = new FormData();
-      // React Native's FormData accepts {uri, name, type} for file parts.
-      form.append("file", {
-        uri: fileUri,
-        name: "recording.m4a",
-        type: mimetype,
-      } as unknown as Blob);
+      // Expo's WinterCG fetch requires real Blob/File parts (the legacy RN
+      // {uri, name, type} object throws "Unsupported FormDataPart implementation").
+      form.append("file", new File(fileUri), "recording.m4a");
       return apiRequest<Transcription>("/transcriptions", { method: "POST", body: form });
     },
 

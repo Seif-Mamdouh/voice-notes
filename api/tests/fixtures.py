@@ -1,17 +1,17 @@
 """Fakes for the service seam — no DB, no network."""
 
 from models import Transcription
-from services.transcription import TranscriptResult
+from services.transcription import Transcribe, TranscriptResult
 
 
-class FakeTranscriber:
-    def __init__(self, result: TranscriptResult):
-        self.result = result
-        self.calls: list[tuple[bytes, str]] = []
+def fake_transcribe(result: TranscriptResult) -> tuple[Transcribe, list[tuple[bytes, str]]]:
+    calls: list[tuple[bytes, str]] = []
 
-    async def transcribe(self, audio: bytes, mimetype: str) -> TranscriptResult:
-        self.calls.append((audio, mimetype))
-        return self.result
+    async def transcribe(audio: bytes, mimetype: str) -> TranscriptResult:
+        calls.append((audio, mimetype))
+        return result
+
+    return transcribe, calls
 
 
 class FakeRepo:

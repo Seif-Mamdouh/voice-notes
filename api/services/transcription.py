@@ -1,5 +1,5 @@
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Protocol
 
 from models import Transcription
 from repos.transcriptions import TranscriptionRepo
@@ -11,32 +11,24 @@ class TranscriptResult:
     duration_seconds: float | None
 
 
-class Transcriber(Protocol):
-    async def transcribe(self, audio: bytes, mimetype: str) -> TranscriptResult: ...
+type Transcribe = Callable[[bytes, str], Awaitable[TranscriptResult]]
 
 
-class TranscriptionService:
-    """Orchestrates transcription: speech-to-text provider + persistence.
+async def create(
+    audio: bytes,
+    mimetype: str,
+    *,
+    transcribe: Transcribe,
+    repo: TranscriptionRepo | None = None,
+) -> Transcription:
+    """Speech-to-text then persist. transcribe/repo are injected so tests can fake both."""
+    result = await transcribe(audio, mimetype)
+    return (repo or TranscriptionRepo()).add(result.transcript, result.duration_seconds)
 
-    Deps are injected (repo has a production default) so tests can fake both
-    without a DB or network. The production transcriber is wired in at the
-    composition root (routers/transcriptions.py).
-    """
 
-    def __init__(
-        self,
-        transcriber: Transcriber,
-        repo: TranscriptionRepo | None = None,
-    ):
-        self._transcriber = transcriber
-        self._repo = repo or TranscriptionRepo()
+def list_all(repo: TranscriptionRepo | None = None) -> list[Transcription]:
+    return (repo or TranscriptionRepo()).list()
 
-    async def create(self, audio: bytes, mimetype: str) -> Transcription:
-        result = await self._transcriber.transcribe(audio, mimetype)
-        return self._repo.add(result.transcript, result.duration_seconds)
 
-    def list(self) -> list[Transcription]:
-        return self._repo.list()
-
-    def get(self, transcription_id: int) -> Transcription | None:
-        return self._repo.get(transcription_id)
+def get(transcription_id: int, repo: TranscriptionRepo | None = None) -> Transcription | None:
+    return (repo or TranscriptionRepo()).get(transcription_id)
