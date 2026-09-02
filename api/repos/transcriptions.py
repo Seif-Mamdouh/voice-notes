@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db import session_factory
-from models import Transcription
+from models import Transcription, TranscriptionStatus
 
 
 class TranscriptionRepo:
@@ -13,10 +13,37 @@ class TranscriptionRepo:
     def __init__(self, sessions: Callable[[], Session] = session_factory):
         self._sessions = sessions
 
-    def add(self, transcript: str, duration_seconds: float | None) -> Transcription:
+    def add_pending(self, audio_path: str) -> Transcription:
         with self._sessions() as session:
-            row = Transcription(transcript=transcript, duration_seconds=duration_seconds)
+            row = Transcription(status=TranscriptionStatus.PENDING, audio_path=audio_path)
             session.add(row)
+            session.commit()
+            return row
+
+    def mark_done(
+        self,
+        transcription_id: int,
+        transcript: str,
+        summary: str | None,
+        duration_seconds: float | None,
+    ) -> Transcription | None:
+        with self._sessions() as session:
+            row = session.get(Transcription, transcription_id)
+            if row is None:
+                return None
+            row.status = TranscriptionStatus.DONE
+            row.transcript = transcript
+            row.summary = summary
+            row.duration_seconds = duration_seconds
+            session.commit()
+            return row
+
+    def mark_failed(self, transcription_id: int) -> Transcription | None:
+        with self._sessions() as session:
+            row = session.get(Transcription, transcription_id)
+            if row is None:
+                return None
+            row.status = TranscriptionStatus.FAILED
             session.commit()
             return row
 

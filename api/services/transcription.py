@@ -1,42 +1,82 @@
+import mimetypes
+import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Protocol
+from pathlib import Path
 
 from models import Transcription
 from repos.transcriptions import TranscriptionRepo
+
+UPLOADS_DIR = Path("uploads")
 
 
 @dataclass
 class TranscriptResult:
     transcript: str
     duration_seconds: float | None
+    summary: str | None = None
 
 
-class Transcriber(Protocol):
-    async def transcribe(self, audio: bytes, mimetype: str) -> TranscriptResult: ...
+type Transcribe = Callable[[bytes, str], Awaitable[TranscriptResult]]
+type StartWorkflow = Callable[[int, str, str], Awaitable[None]]
+type SaveAudio = Callable[[bytes, str], str]
+type ReadAudio = Callable[[str], bytes]
 
 
-class TranscriptionService:
-    """Orchestrates transcription: speech-to-text provider + persistence.
+def save_audio(audio: bytes, mimetype: str) -> str:
+    ext = mimetypes.guess_extension(mimetype) or ".m4a"
+    UPLOADS_DIR.mkdir(exist_ok=True)
+    path = UPLOADS_DIR / f"{uuid.uuid4()}{ext}"
+    path.write_bytes(audio)
+    return str(path)
 
-    Deps are injected (repo has a production default) so tests can fake both
-    without a DB or network. The production transcriber is wired in at the
-    composition root (routers/transcriptions.py).
+
+async def enqueue(
+    audio: bytes,
+    mimetype: str,
+    *,
+    start_workflow: StartWorkflow,
+    save_file: SaveAudio | None = None,
+    repo: TranscriptionRepo | None = None,
+) -> Transcription:
+    """Persist the audio and a pending row, then hand off to the worker.
+
+    The audio itself never crosses the workflow boundary — only its path.
     """
+    path = (save_file or save_audio)(audio, mimetype)
+    row = (repo or TranscriptionRepo()).add_pending(path)
+    await start_workflow(row.id, path, mimetype)
+    return row
 
-    def __init__(
-        self,
-        transcriber: Transcriber,
-        repo: TranscriptionRepo | None = None,
-    ):
-        self._transcriber = transcriber
-        self._repo = repo or TranscriptionRepo()
 
-    async def create(self, audio: bytes, mimetype: str) -> Transcription:
-        result = await self._transcriber.transcribe(audio, mimetype)
-        return self._repo.add(result.transcript, result.duration_seconds)
+async def process(
+    transcription_id: int,
+    audio_path: str,
+    mimetype: str,
+    *,
+    transcribe: Transcribe,
+    read_file: ReadAudio | None = None,
+    repo: TranscriptionRepo | None = None,
+) -> Transcription | None:
+    """The worker-side body: transcribe the stored file and record the result.
 
-    def list(self) -> list[Transcription]:
-        return self._repo.list()
+    Failure marking lives in the workflow, not here, so activity retries
+    don't prematurely flip the row to failed.
+    """
+    audio = (read_file or _read_audio)(audio_path)
+    result = await transcribe(audio, mimetype)
+    return (repo or TranscriptionRepo()).mark_done(
+        transcription_id, result.transcript, result.summary, result.duration_seconds
+    )
 
-    def get(self, transcription_id: int) -> Transcription | None:
-        return self._repo.get(transcription_id)
+
+def _read_audio(path: str) -> bytes:
+    return Path(path).read_bytes()
+
+
+def list_all(repo: TranscriptionRepo | None = None) -> list[Transcription]:
+    return (repo or TranscriptionRepo()).list()
+
+
+def get(transcription_id: int, repo: TranscriptionRepo | None = None) -> Transcription | None:
+    return (repo or TranscriptionRepo()).get(transcription_id)
