@@ -1,3 +1,3 @@
 @AGENTS.md
 
-Reply terse. Drop grammar when it saves tokens.
+When reporting information to me, be extremely concise and sacrifice grammar for the sake of concision.
